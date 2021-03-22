@@ -175,6 +175,7 @@ def start_mcd_analysis(drop_outliers=False, scale_requests=True):
         SCALE_FACTOR = 5000000. / (d['QPS_uncorrected']*d['time'])
 
         for c in COLS_TO_SCALE:
+            d[c] = pd.to_numeric(d[c], errors='coerce') * SCALE_FACTOR
             d[c] = d[c] * SCALE_FACTOR
 
         return d

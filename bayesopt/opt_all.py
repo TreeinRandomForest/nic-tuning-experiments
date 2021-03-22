@@ -18,18 +18,28 @@ key = namedtuple('key', ['workload', 'sys', 'conf', 'n_init_points', 'kappa', 'n
 
 def run(debug=False):
     config = {'netpipe': [('msg', 64), ('msg', 8192), ('msg', 65536), ('msg', 524288)],
-              'nodejs': [None]
+              'nodejs': [None],
+              'mcd': [('QPS', 200000), ('QPS', 400000), ('QPS', 600000)],
+              'mcdsilo': [('QPS', 50000), ('QPS', 100000), ('QPS', 200000)]
             }
     results = {}
 
-    for workload in ['netpipe', 'nodejs']:
+    for workload in ['netpipe', 'nodejs', 'mcd', 'mcdsilo']:
         df_comb, _, _ = read_agg_data.start_analysis(workload) #DATA
         df_comb['dvfs'] = df_comb['dvfs'].apply(lambda x: int(x, base=16))
         df_comb['edp_mean'] *= -1
         df_comb = df_comb[(df_comb['itr']!=1) | (df_comb['dvfs']!=65535)] #filter out linux dynamic
 
         for sys in ['linux', 'ebbrt']:
+            #seems like read_agg_data can't read mcd_ebbrt yet
+            if(workload=='mcd' and sys == 'ebbrt'):
+                break
             df = df_comb[(df_comb['sys']==sys)].copy()
+
+            # pdb.set_trace()
+            #there are some values in mcdsilo with ebbrt that are NaN
+            df = df[df['edp_mean'].notna()]
+            # pdb.set_trace()
 
             #depends on sys
             INDEX_COLS = []
@@ -147,6 +157,12 @@ def objective_interp(df, index_cols, uniq_val_dict, debug=False, **kwargs):
         corner = space[idx]
 
         global_accesses[corner] = 1
+
+        #there are combinations that do not exist in the data set
+        try:
+            df.loc[corner]
+        except:
+            continue
 
         if debug: print(corner, df.head())
         try:
