@@ -24,7 +24,7 @@ def run(debug=False):
             }
     results = {}
 
-    for workload in ['netpipe', 'nodejs', 'mcd', 'mcdsilo']:
+    for workload in ['mcd']:
         df_comb, _, _ = read_agg_data.start_analysis(workload) #DATA
         df_comb['dvfs'] = df_comb['dvfs'].apply(lambda x: int(x, base=16))
         df_comb['edp_mean'] *= -1
