@@ -24,6 +24,8 @@ def inference(d, n_iter, lr, print_freq=10):
     
     x = d[:,0]
     y = d[:,1]
+    print(type(d))
+    print(type(x))
 
     criterion = nn.MSELoss()
     optimizer = optim.Adam([A, B, p], lr=lr)
