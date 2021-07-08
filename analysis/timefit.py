@@ -21,19 +21,20 @@ def inference(d, n_iter, lr, workload, sys, print_freq=10):
     
     log_max_time = torch.rand(1, requires_grad=True)
     alpha = torch.rand(1, requires_grad=True)
+    itr_suppress = torch.rand(1, requires_grad=True)
 
     t_latency = d[:,0]
     itr = d[:,1]
     dvfs = d[:,2]
 
     criterion = nn.MSELoss()
-    optimizer = optim.Adam([log_max_time, alpha], lr=lr)
+    optimizer = optim.Adam([log_max_time, alpha, itr_suppress], lr=lr)
 
     print(f'---------------{workload} {sys} lr = {lr}---------------')
 
     for _ in range(n_iter):
         max_time = torch.exp(log_max_time)
-        pred = itr + max_time/dvfs**(1+alpha)
+        pred = itr_suppress*itr + max_time/dvfs**(1+alpha)
         loss = criterion(pred, t_latency)
 
         optimizer.zero_grad()
@@ -41,11 +42,14 @@ def inference(d, n_iter, lr, workload, sys, print_freq=10):
         optimizer.step()
 
         if _ % print_freq == 0:
-            print(max_time, alpha, loss)
+            if _==0:
+                print(f'{"max_time":^10} {"alpha":^10} {"itr_suppress":^10} {"loss":^10}')
+            
+            print(f'{max_time.item():^10.3f} {alpha.item():^10.3f} {itr_suppress.item():^10.3f} {loss.item():^10.3f}')
 
     return pred
     
-def run(n_iter=2000, lr=1e-1):
+def run(n_iter=2000, lr=1e-1, target_col='read_99th_mean'):
     #read linux_mcd.csv
     for workload in ['mcd']:
         df_comb, _, _ = read_agg_data.start_analysis(workload) #DATA
@@ -56,7 +60,7 @@ def run(n_iter=2000, lr=1e-1):
 
         for sys in ['ebbrt_tuned']:
             df = df_comb[(df_comb['sys']==sys)].copy()
-            df = df[['read_99th_mean','itr', 'dvfs']]
+            df = df[[target_col,'itr', 'dvfs']]
             d = df.values
             d = torch.tensor(d)
 
