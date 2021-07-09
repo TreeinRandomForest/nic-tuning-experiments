@@ -30,8 +30,6 @@ def inference(d, n_iter, lr, workload, sys, print_freq=10):
     criterion = nn.MSELoss()
     optimizer = optim.Adam([log_max_time, alpha, itr_suppress], lr=lr)
 
-    print(f'---------------{workload} {sys} lr = {lr}---------------')
-
     for _ in range(n_iter):
         max_time = torch.exp(log_max_time)
         pred = itr_suppress*itr + max_time/dvfs**(1+alpha)
@@ -47,44 +45,62 @@ def inference(d, n_iter, lr, workload, sys, print_freq=10):
             
             print(f'{max_time.item():^10.3f} {alpha.item():^10.3f} {itr_suppress.item():^10.3f} {loss.item():^10.3f}')
 
-    return pred
+    return pred, {'max_time': max_time.item(), 'alpha': alpha.item(), 'itr_suppress': itr_suppress.item()}
     
-def run(n_iter=2000, lr=1e-1, target_col='read_99th_mean'):
+def run_all(n_iter=1000, lr=1e-2):
+    for qps in [200000,400000, 60000]:
+        for sys in ['linux_tuned', 'ebbrt_tuned']:
+            for target_col in [f'read_{i}th_mean' for i in [5, 10, 50, 90, 99]]:
+                run(n_iter=n_iter, lr=lr, sys=sys, qps=qps, target_col=target_col)
+
+
+def run(n_iter=2000, 
+        lr=1e-1, 
+        target_col='read_99th_mean',
+        sys='ebbrt_tuned',
+        qps=400000):
+
     #read linux_mcd.csv
     for workload in ['mcd']:
-        df_comb, _, _ = read_agg_data.start_analysis(workload) #DATA
+        #read raw data: TODO check all preprocessing is correct
+        df_comb, _, _ = read_agg_data.start_analysis(workload)
         df_comb['dvfs'] = df_comb['dvfs'].apply(lambda x: int(x, base=16))
         df_comb = df_comb[(df_comb['itr']!=1) | (df_comb['dvfs']!=65535)] #filter out linux dynamic
         df_comb['dvfs'] = df_comb['dvfs'].astype(float) / df_comb['dvfs'].min()
-        df_comb = df_comb[df_comb['QPS'] == 400000]
+        df_comb = df_comb[df_comb['QPS'] == qps]
 
-        for sys in ['ebbrt_tuned']:
-            df = df_comb[(df_comb['sys']==sys)].copy()
-            df = df[[target_col,'itr', 'dvfs']]
-            d = df.values
-            d = torch.tensor(d)
+        #filter to system
+        df = df_comb[(df_comb['sys']==sys)].copy()
+        df = df[[target_col,'itr', 'dvfs']]
+        d = df.values
+        d = torch.tensor(d)
 
-            pred = inference(d, n_iter, lr, workload, sys, print_freq=500)
-            df[f'prediction lr={lr}'] = pred.detach().numpy()
+        #fitting
+        print(f'----------{workload} {sys} QPS={qps} {target_col}-------------')
+        if df.shape==0:
+            raise ValueError('Empty Dataframe')
+        pred, params = inference(d, n_iter, lr, workload, sys, print_freq=500)
+        df[f'prediction lr={lr}'] = pred.detach().numpy()
 
-            fig, ax = plt.subplots()
-            plt.title(f'workload={workload} system={sys} lr={lr} QPS=400000')
-            plt.xlabel(u"predictions")
-            plt.ylabel(u"actual values")
+        #plotting
+        fig, ax = plt.subplots()
+        plt.title(f"{workload} {sys} {qps} {target_col}\n maxtime={params['max_time']:.2f} alpha={params['alpha']:.2f} itr_suppress={params['itr_suppress']:.2f}")
+        plt.xlabel(u"predictions")
+        plt.ylabel(u"actual values")
 
-            scatter = ax.scatter(pred.detach().numpy(), d[:,0], marker = 'o', s = d[:,1], c = d[:,2], alpha=0.3)
+        scatter = ax.scatter(pred.detach().numpy(), d[:,0], marker = 'o', s = d[:,1], c = d[:,2], alpha=0.3)
 
-            legend1 = ax.legend(*scatter.legend_elements(),loc="upper left", title="dvfs")
-            ax.add_artist(legend1)
-            handles, labels = scatter.legend_elements(prop="sizes", alpha=0.6)
-            legend2 = plt.legend(handles, labels, loc="lower right", title="itr")
-            ax.add_artist(legend2)
+        legend1 = ax.legend(*scatter.legend_elements(),loc="upper left", title="dvfs")
+        ax.add_artist(legend1)
+        handles, labels = scatter.legend_elements(prop="sizes", alpha=0.6)
+        legend2 = plt.legend(handles, labels, loc="lower right", title="itr")
+        ax.add_artist(legend2)
 
-            ax.set_xlim(0, ax.get_xlim()[1])
-            ax.set_ylim(0, ax.get_ylim()[1])
-            ax.grid()
+        ax.set_xlim(0, ax.get_xlim()[1])
+        ax.set_ylim(0, ax.get_ylim()[1])
+        ax.grid()
 
-            ax.plot(np.arange(0, int(ax.get_xlim()[1])), np.arange(0, int(ax.get_xlim()[1])))
+        ax.plot(np.arange(0, int(ax.get_xlim()[1])), np.arange(0, int(ax.get_xlim()[1])))
 
-            plt.savefig(f'plots/timefit/{workload}_{sys}_{lr}.png')
-            plt.close()
+        plt.savefig(f'plots/timefit/{workload}_{sys}_{target_col}_{qps}_{lr}.png')
+        plt.close()
