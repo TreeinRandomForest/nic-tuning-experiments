@@ -45,13 +45,17 @@ def inference(d, n_iter, lr, workload, sys, print_freq=10):
             
             print(f'{max_time.item():^10.3f} {alpha.item():^10.3f} {itr_suppress.item():^10.3f} {loss.item():^10.3f}')
 
-    return pred, {'max_time': max_time.item(), 'alpha': alpha.item(), 'itr_suppress': itr_suppress.item()}
+    return pred, {'max_time': max_time.item(), 'alpha': alpha.item(), 'itr_suppress': itr_suppress.item(), 'sqrt_loss': np.sqrt(loss.item())}
     
-def run_all(n_iter=1000, lr=1e-2):
-    for qps in [200000,400000, 60000]:
-        for sys in ['linux_tuned', 'ebbrt_tuned']:
-            for target_col in [f'read_{i}th_mean' for i in [5, 10, 50, 90, 99]]:
-                run(n_iter=n_iter, lr=lr, sys=sys, qps=qps, target_col=target_col)
+def run_all(n_iter=1000, lr=1e-2, qps=200000):
+    #for qps in [200000,400000, 60000]:
+    data = []
+    for sys in ['linux_tuned', 'ebbrt_tuned']:
+        for target_col in [f'read_{i}th_mean' for i in [5, 10, 50, 90, 99]]:
+            d = run(n_iter=n_iter, lr=lr, sys=sys, qps=qps, target_col=target_col)
+            data.append(d)
+
+    return data
 
 
 def run(n_iter=2000, 
@@ -84,7 +88,7 @@ def run(n_iter=2000,
 
         #plotting
         fig, ax = plt.subplots()
-        plt.title(f"{workload} {sys} {qps} {target_col}\n maxtime={params['max_time']:.2f} alpha={params['alpha']:.2f} itr_suppress={params['itr_suppress']:.2f}")
+        plt.title(f"{workload} {sys} {qps} {target_col}\n maxtime={params['max_time']:.2f} alpha={params['alpha']:.2f} itr_suppress={params['itr_suppress']:.2f} loss={params['sqrt_loss']:.2f}")
         plt.xlabel(u"predictions")
         plt.ylabel(u"actual values")
 
@@ -104,3 +108,5 @@ def run(n_iter=2000,
 
         plt.savefig(f'plots/timefit/{workload}_{sys}_{target_col}_{qps}_{lr}.png')
         plt.close()
+
+        return {**params, 'sys': sys, 'workload': workload, 'qps': qps, 'target_col': target_col}
