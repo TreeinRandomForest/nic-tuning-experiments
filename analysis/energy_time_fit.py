@@ -88,13 +88,15 @@ def run(n_iter=2000, lr = 1e-2):
                 for pred_name in ['pred_energy', 'pred_time']:
                     if pred_name == 'pred_energy':
                         pred = pred_energy
+                        yvalue = d[:,0]/(qps*20)
                     else:
                         pred = pred_time
+                        yvalue = d[:,4]
                     fig, ax = plt.subplots()
                     plt.title(f'predict:{pred_name} workload={workload} system={sys} lr={lr} QPS=400000')
                     plt.xlabel(u"predictions")
                     plt.ylabel(pred_name)
-                    scatter = ax.scatter(pred.detach().numpy()[0], d[:,0], marker = 'o', s = d[:,1], c = d[:,2], alpha=0.3)
+                    scatter = ax.scatter(pred.detach().numpy()[0], yvalue, marker = 'o', s = d[:,1], c = d[:,2], alpha=0.3)
                     legend1 = ax.legend(*scatter.legend_elements(),loc="upper left", title="dvfs")
                     ax.add_artist(legend1)
                     handles, labels = scatter.legend_elements(prop="sizes", alpha=0.6)
