@@ -15,7 +15,7 @@ import pdb
 plt.ion()
 
 def inference(d, n_iter, lr, workload, sys, print_freq=10):
-    p_busy_min = 20
+    # p_busy_min = 20
     p_static = {
         'c1':1.5, 
         'c3':0.5,
@@ -25,13 +25,18 @@ def inference(d, n_iter, lr, workload, sys, print_freq=10):
     }
     chosen_sleep = 'c7'
 
-    p_q = p_static[chosen_sleep]
-    p_detect = p_static[chosen_sleep]
+    # p_q = p_static[chosen_sleep]
+    # p_detect = p_static[chosen_sleep]
 
     #starts randomly
     max_time = torch.tensor(torch.Tensor(1,1).uniform_(10, 500), requires_grad=True)
     alpha = torch.tensor(torch.Tensor(1,1).uniform_(-2, 2), requires_grad=True)
     beta = torch.tensor(torch.Tensor(1,1).uniform_(-2, 2), requires_grad=True)
+    p_static_busy = torch.tensor(torch.Tensor(1,1).uniform_(0, 35), requires_grad=True)
+    p_detect = torch.tensor(torch.Tensor(1,1).uniform_(0, 35), requires_grad=True)
+    p_q = torch.tensor(torch.Tensor(1,1).uniform_(0, 35), requires_grad=True)
+    p_busy_min = torch.tensor(torch.Tensor(1,1).uniform_(0, 35), requires_grad=True)
+    itr_suppress = torch.rand(1, requires_grad=True)
     
     qps = d[:,3]
     energy = d[:,0]/(qps*20)
@@ -40,27 +45,53 @@ def inference(d, n_iter, lr, workload, sys, print_freq=10):
     time = d[:,4]
     interarrival_time = 1/qps*10**6
 
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam([max_time, alpha, beta], lr=lr)
+    current_loss_time = -100
+    fixed_max_time = -100
+    fixed_alpha = -100
 
-    print(f'---------------{workload} {sys} lr = {lr}---------------')
+    criterion = nn.MSELoss()
+    optimizer_time = optim.Adam([max_time, alpha], lr=lr)
+    optimizer_energy = optim.Adam([max_time, alpha, beta, p_detect, p_q], lr=lr)
+    # optimizer = optim.Adam([max_time, alpha, beta, p_detect, p_q], lr=lr)
+
+    print(f'---------------FOR TIME LOSS {workload} {sys} lr = {lr}---------------')
 
     for _ in range(n_iter):
-        p_busy = (p_static['busy'] + p_busy_min*dvfs**(2+beta))
+        p_busy = (p_static_busy + p_busy_min*dvfs**(2+beta))
         t_busy = (max_time / dvfs**(1+alpha))
-        t_q = (interarrival_time - itr - t_busy)
-        pred_energy = (p_detect * itr) + (p_busy * t_busy) + (p_q * t_q)
-        pred_time = itr + t_busy
-        loss_energy = criterion(pred_energy/energy, torch.ones((1,pred_time.shape[1])).double())
+        pred_time = itr_suppress*itr + t_busy
         loss_time = criterion(pred_time/time, torch.ones((1,pred_time.shape[1])).double())
-        loss = loss_energy + loss_time
+        # loss = loss_energy + loss_time
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        optimizer_time.zero_grad()
+        loss_time.backward(retain_graph=True)
+        optimizer_time.step()
+
+        if(current_loss_time == -100):
+            current_loss_time = loss_time.item()
+        else:
+            if(current_loss_time >= loss_time.item()):
+                current_loss_time = loss_time.item()
+                fixed_max_time = max_time.item()
+                fixed_alpha = alpha.item()
 
         if _ % print_freq == 0:
-            print(max_time.item(), alpha.item(), beta.item(), loss_energy.item(), loss_time.item())
+            print(max_time.item(), alpha.item(), itr_suppress.item(), loss_time.item())
+
+    print(f'---------------FOR ENERGY LOSS {workload} {sys} lr = {lr} max_time = {fixed_max_time} alpha = {fixed_alpha}---------------')
+
+    for _ in range(n_iter):
+        t_busy_energy = (fixed_max_time / dvfs**(1+fixed_alpha))
+        t_q_energy = (interarrival_time - itr - t_busy_energy)
+        pred_energy = (p_detect * itr_suppress*itr) + (p_busy * t_busy_energy) + (p_q * t_q_energy)
+        loss_energy = criterion(pred_energy/energy, torch.ones((1,pred_energy.shape[1])).double())
+
+        optimizer_energy.zero_grad()
+        loss_energy.backward(retain_graph=True)
+        optimizer_energy.step()
+
+        if _ % print_freq == 0:
+            print(max_time.item(), alpha.item(), beta.item(), p_detect.item(), p_q.item(), itr_suppress.item(), loss_energy.item())
 
     return pred_energy, pred_time
     
@@ -85,9 +116,10 @@ def run(n_iter=2000, lr = 1e-2):
                 df[f'pre_energy lr={lr}'] = pred_energy.view(245, 1).detach().numpy()
                 df[f'pre_time lr={lr}'] = pred_time.view(245, 1).detach().numpy()
                 
-                for pred_name in ['pred_energy', 'pred_time']:
-                    if pred_name == 'pred_energy':
+                for pred_name in ['energy', 'time']:
+                    if pred_name == 'energy':
                         pred = pred_energy
+                        qps = d[:,3]
                         yvalue = d[:,0]/(qps*20)
                     else:
                         pred = pred_time
@@ -102,5 +134,5 @@ def run(n_iter=2000, lr = 1e-2):
                     handles, labels = scatter.legend_elements(prop="sizes", alpha=0.6)
                     legend2 = plt.legend(handles, labels, loc="lower right", title="itr")
                     ax.add_artist(legend2)
-                    plt.savefig(f'plots/energy_time_fit/{pred_name}_{workload}_{sys}_{lr}.png')
+                    plt.savefig(f'plots/energy_time_fit/randomp_{pred_name}_{workload}_{sys}_{lr}.png')
                     plt.close()
