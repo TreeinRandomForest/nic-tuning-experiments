@@ -14,7 +14,7 @@ import pdb
 
 plt.ion()
 
-def inference(d, n_iter, lr, workload, sys, print_freq=10):
+def inference(d, itr, n_iter, lr, workload, sys, print_freq=10):
     #starts randomly
     #max_time = torch.tensor(torch.Tensor(1,1).uniform_(10, 500), requires_grad=True)
     #alpha = torch.tensor(torch.Tensor(1,1).uniform_(-2, 2), requires_grad=True)
@@ -24,8 +24,7 @@ def inference(d, n_iter, lr, workload, sys, print_freq=10):
     itr_suppress = torch.rand(1, requires_grad=True)
 
     t_latency = d[:,0]
-    itr = d[:,1]
-    dvfs = d[:,2]
+    dvfs = d[:,1]
 
     criterion = nn.MSELoss()
     optimizer = optim.Adam([log_max_time, alpha, itr_suppress], lr=lr)
@@ -75,38 +74,42 @@ def run(n_iter=2000,
 
         #filter to system
         df = df_comb[(df_comb['sys']==sys)].copy()
-        df = df[[target_col,'itr', 'dvfs']]
-        d = df.values
-        d = torch.tensor(d)
 
-        #fitting
-        print(f'----------{workload} {sys} QPS={qps} {target_col}-------------')
-        if df.shape==0:
-            raise ValueError('Empty Dataframe')
-        pred, params = inference(d, n_iter, lr, workload, sys, print_freq=500)
-        df[f'prediction lr={lr}'] = pred.detach().numpy()
+        #interate over different itr values
+        unique_itr = df['itr'].unique()
+        for itr in unique_itr:
+            df_itr = df[df['itr'] == itr]
+            
+            df_itr = df_itr[[target_col, 'dvfs']]
+            d = df_itr.values
+            d = torch.tensor(d)
 
-        #plotting
-        fig, ax = plt.subplots()
-        plt.title(f"{workload} {sys} {qps} {target_col}\n maxtime={params['max_time']:.2f} alpha={params['alpha']:.2f} itr_suppress={params['itr_suppress']:.2f} loss={params['sqrt_loss']:.2f}")
-        plt.xlabel(u"predictions")
-        plt.ylabel(u"actual values")
+            #fitting
+            print(f'----------{workload} {sys} itr={itr} QPS={qps} {target_col}-------------')
+            if df.shape==0:
+                raise ValueError('Empty Dataframe')
+            pred, params = inference(d, itr, n_iter, lr, workload, sys, print_freq=500)
+            # df[f'prediction lr={lr}'] = pred.detach().numpy()
 
-        scatter = ax.scatter(pred.detach().numpy(), d[:,0], marker = 'o', s = d[:,1], c = d[:,2], alpha=0.3)
+            #plotting
+            fig, ax = plt.subplots()
+            plt.title(f"{workload} {sys} {qps} {target_col}\n maxtime={params['max_time']:.2f} alpha={params['alpha']:.2f} itr_suppress={params['itr_suppress']:.2f} loss={params['sqrt_loss']:.2f}")
+            plt.xlabel(u"predictions")
+            plt.ylabel(u"actual values")
 
-        legend1 = ax.legend(*scatter.legend_elements(),loc="upper left", title="dvfs")
-        ax.add_artist(legend1)
-        handles, labels = scatter.legend_elements(prop="sizes", alpha=0.6)
-        legend2 = plt.legend(handles, labels, loc="lower right", title="itr")
-        ax.add_artist(legend2)
+            scatter = plt.scatter(pred.detach().numpy(), d[:,0], s = [10**n for n in d[:,1]])
 
-        ax.set_xlim(0, ax.get_xlim()[1])
-        ax.set_ylim(0, ax.get_ylim()[1])
-        ax.grid()
+            handles, labels = scatter.legend_elements(prop="sizes", alpha=0.6)
+            legend2 = plt.legend(handles, labels, loc="lower right", title="dvfs")
+            ax.add_artist(legend2)
 
-        ax.plot(np.arange(0, int(ax.get_xlim()[1])), np.arange(0, int(ax.get_xlim()[1])))
+            ax.set_xlim(ax.get_xlim()[0], ax.get_xlim()[1])
+            ax.set_ylim(ax.get_ylim()[0], ax.get_ylim()[1])
+            ax.grid()
 
-        plt.savefig(f'plots/timefit/{workload}_{sys}_{target_col}_{qps}_{lr}.png')
-        plt.close()
+            ax.plot(np.arange(0, int(ax.get_xlim()[1]+100)), np.arange(0, int(ax.get_xlim()[1]+100)))
+
+            plt.savefig(f'plots/timefit/diff_itr/{itr}_{workload}_{sys}_{target_col}_{qps}_{lr}.png')
+            plt.close()
 
         return {**params, 'sys': sys, 'workload': workload, 'qps': qps, 'target_col': target_col}
