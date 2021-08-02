@@ -93,7 +93,7 @@ def run(n_iter=2000,
 
             #plotting
             fig, ax = plt.subplots()
-            plt.title(f"{workload} {sys} {qps} {target_col}\n maxtime={params['max_time']:.2f} alpha={params['alpha']:.2f} itr_suppress={params['itr_suppress']:.2f} loss={params['sqrt_loss']:.2f}")
+            plt.title(f"{workload} {sys} {qps} {target_col}\n itr={itr} maxtime={params['max_time']:.2f} alpha={params['alpha']:.2f} itr_suppress={params['itr_suppress']:.2f} loss={params['sqrt_loss']:.2f}")
             plt.xlabel(u"predictions")
             plt.ylabel(u"actual values")
 
