@@ -129,7 +129,7 @@ def start_nodejs_analysis(drop_outliers=False, scale_requests=True):
 
 def start_mcd_analysis(drop_outliers=False, scale_requests=True):
     '''TODO: Merge with start_nodejs_analysis'''
-    df_linux = pd.read_csv(os.path.join('/Users/marciama/desktop/research/nic-tuning-experiments/bayesopt/summary_data/mcd_combined.csv'), sep=' ')
+    df_linux = pd.read_csv(os.path.join('/home/handong/jupyter/jupyter-notebooks/nic-tuning-experiments/bayesopt/summary_data/mcd_combined.csv'), sep=' ')
     #df_linux = pd.read_csv(os.path.join(Locations.aggregate_files_loc, 'mcd_combined.csv'), sep=' ')
     #df_ebbrt = pd.read_csv(os.path.join(Locations.aggregate_files_loc, 'ebbrt_mcd.csv'), sep=' ')
     #df = pd.concat([df_linux, df_ebbrt], axis=0)
