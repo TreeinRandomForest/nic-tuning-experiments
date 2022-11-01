@@ -1,7 +1,11 @@
 import gym
 from gym import spaces
 
+import ray
+from ray.rllib.algorithms import ppo
+
 import numpy as np
+import pandas as pd
 import config
 
 REWARD_PENALTY = config.REWARD_PENALTY
@@ -40,11 +44,12 @@ def prepare_action_dicts(df):
 
 
 class WorkloadEnv(gym.Env):
-    def __init__(self, df):
+    def __init__(self, env_config):
         super(WorkloadEnv, self).__init__()
-
+        print(env_config)
         #basic data structures
         #state_dict = df[(df['exp']==0) & (df['core']==0)].drop('fname', axis=1).set_index(['itr', 'dvfs', 'rapl', 'sys', 'core', 'exp']).T.to_dict()
+        df = pd.read_csv(env_config['df_fname'])
 
         misc_cols = ['joules_per_interrupt',
                     'time_per_interrupt',
@@ -64,11 +69,30 @@ class WorkloadEnv(gym.Env):
         state_dict = df_state.T.to_dict()
         reward_dict = df_misc.T.to_dict()
 
+        self.feature_list = np.array(list(state_dict[list(state_dict.keys())[0]].keys()))
+    
+        for key in state_dict:
+            state_dict[key] = np.array(list(state_dict[key].values()))
+
         self.state_dict = state_dict #maps (itr, dvfs, rapl, [qps, workload]) -> state
         self.reward_dict = reward_dict
 
+        #insert observation space after creation of state_dict
+        n_obs = self.state_dict[list(self.state_dict.keys())[0]].shape[0]
+        self.observation_space = gym.spaces.Box(low=np.zeros((n_obs)), high=np.inf*np.ones(n_obs))
+        
         self.key_list = list(self.state_dict.keys())
-        self.action_space, self.col_list = prepare_action_dicts(df)
+        self.action_space_internal, self.col_list = prepare_action_dicts(df)
+
+        #n_act = [len(self.action_space_internal['itr']), len(self.action_space_internal['dvfs']), 1]
+        n_act = [3, 3, 1]
+        self.action_space = gym.spaces.MultiDiscrete(n_act)
+        '''
+        action_space_internal expects {-1, 0, 1}
+        action_space generates {0, 1, 2} -> subtract 1
+
+        '''
+
 
         self.state, self.reward, self.key = self.init_state()
 
@@ -81,9 +105,10 @@ class WorkloadEnv(gym.Env):
         new_key = list(self.key)
         for idx in range(len(action)):
             
-            col = self.col_list[idx]
+            col = self.col_list[idx] #'itr', 'dvfs'
 
-            new_key[idx] = self.action_space[col][self.key[idx]][action[idx]]
+            #new_key[idx] = self.action_space_internal[col][self.key[idx]][action[idx]]
+            new_key[idx] = self.action_space_internal[col][self.key[idx]][action[idx]-1]
             if debug:
                 print(f'{col} {self.key[idx]} action={action[idx]} {new_key[idx]}')
         
@@ -157,6 +182,15 @@ class WorkloadEnv(gym.Env):
  
         return history
 
+ray.init()
+algo = ppo.PPO(env=WorkloadEnv, config={
+        'framework': 'torch',
+        'num_workers': 1,
+        'env_config': {'df_fname': 'features/features.csv'}
+    })
+
+r = algo.train()
+
 '''
 workload fixed:
     init:
@@ -173,3 +207,5 @@ workload fixed:
 
 
 '''
+
+ray.shutdown()
